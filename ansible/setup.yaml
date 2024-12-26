@@ -28,6 +28,11 @@
         name: nodejs
         state: present
 
+    - name: Install NPM
+      apt:
+        name: npm
+        state: present
+
     # Install pm2 globally
     - name: Install pm2 process manager
       npm:
