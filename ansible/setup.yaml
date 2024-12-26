@@ -6,6 +6,7 @@
     nodejs_version: "16"  # Change to your desired Node.js version
     app_name: "data-ingestion-demo"    # Name of your Node.js app
     app_port: 3000        # Local port where the Node.js app runs
+    domain_name: "127.0.0.1"
 
   tasks:
     # Update and upgrade system packages
@@ -48,17 +49,23 @@
         group: ubuntu
         mode: 0755
 
-    # Configure pm2 to manage the app
-    - name: Setup pm2 to manage the app
+    # Build the Next.js application
+    - name: Build the Next.js app
+      shell: npm run build
+      args:
+        chdir: "/home/ubuntu/{{ app_name }}"
+
+    # Configure PM2 to manage the Next.js app
+    - name: Setup PM2 to manage the Next.js app
       shell: |
-        pm2 start app.js --name "{{ app_name }}" --watch
+        pm2 start npm --name "{{ app_name }}" -- start
         pm2 save
         pm2 startup systemd
       args:
         chdir: "/home/ubuntu/{{ app_name }}"
       register: pm2_output
 
-    - name: Display pm2 setup output
+    - name: Display PM2 setup output
       debug:
         var: pm2_output.stdout
 
