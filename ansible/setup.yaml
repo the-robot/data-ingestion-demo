@@ -1,0 +1,141 @@
+---
+- name: Setup Ubuntu Server for Node.js Application
+  hosts: all
+  become: true
+  vars:
+    nodejs_version: "16"
+    app_directory: "/var/www/learning"
+    nginx_config_path: "/etc/nginx/sites-available/learning"
+    domain_name: "127.0.0.1"  # Replace with your server IP
+
+  tasks:
+    # Update and upgrade system packages
+    - name: Update and upgrade apt packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+        autoremove: yes
+
+    # Install necessary packages
+    - name: Install required packages
+      apt:
+        name:
+          - curl
+          - ufw
+          - nginx
+          - git
+          - software-properties-common
+          - fail2ban
+        state: present
+
+    # Install Node.js
+    - name: Add Node.js APT repository
+      command: curl -fsSL https://deb.nodesource.com/setup_{{ nodejs_version }}.x | bash -
+      args:
+        creates: /etc/apt/sources.list.d/nodesource.list
+
+    - name: Install Node.js
+      apt:
+        name: nodejs
+        state: present
+
+    # Install pnpm
+    - name: Install pnpm globally
+      npm:
+        name: pnpm
+        global: yes
+
+    # Create application directory
+    - name: Create application directory
+      file:
+        path: "{{ app_directory }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: 0755
+
+    # Configure nginx
+    - name: Configure nginx for reverse proxy
+      template:
+        src: nginx.j2
+        dest: "{{ nginx_config_path }}"
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Enable nginx site configuration
+      file:
+        src: "{{ nginx_config_path }}"
+        dest: "/etc/nginx/sites-enabled/learning"
+        state: link
+
+    - name: Remove default nginx site configuration
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Restart nginx
+      service:
+        name: nginx
+        state: restarted
+
+    # Secure server
+    - name: Enable UFW and allow HTTP
+      ufw:
+        rule: allow
+        port: "80"
+        proto: tcp
+
+    - name: Enable UFW and deny all incoming except allowed
+      ufw:
+        state: enabled
+        policy: deny
+
+    # Disable SSH password and root login
+    - name: Disable SSH password and root login
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      with_items:
+        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
+
+    - name: Restart SSH service
+      service:
+        name: ssh
+        state: restarted
+
+    # Enable SELinux
+    - name: Check if SELinux is installed
+      command: sestatus
+      ignore_errors: yes
+      register: selinux_status
+
+    - name: Enable SELinux if not active
+      shell: setenforce 1
+      when: selinux_status.rc != 0
+
+    - name: Ensure SELinux is enforced on reboot
+      replace:
+        path: /etc/selinux/config
+        regexp: "^SELINUX="
+        replace: "SELINUX=enforcing"
+
+    # Configure Fail2Ban
+    - name: Configure Fail2Ban
+      copy:
+        dest: /etc/fail2ban/jail.local
+        content: |
+          [sshd]
+          enabled = true
+          port = ssh
+          logpath = %(sshd_log)s
+          maxretry = 5
+          bantime = 3600
+
+    - name: Restart Fail2Ban
+      service:
+        name: fail2ban
+        state: restarted
