@@ -1,12 +1,12 @@
 ---
-- name: Setup Ubuntu Server for Node.js Application
+- name: Setup Ubuntu Server with PM2 and Nginx
   hosts: all
   become: true
   vars:
-    nodejs_version: "16"
-    app_directory: "/var/www/learning"
-    nginx_config_path: "/etc/nginx/sites-available/learning"
-    domain_name: "127.0.0.1"  # Replace with your server IP
+    nodejs_version: "16"  # Change to your desired Node.js version
+    app_name: "data-ingestion-demo"    # Name of your Node.js app
+    app_port: 3000        # Local port where the Node.js app runs
+    domain_name: "127.0.0.1"  # Replace with your domain or server IP
 
   tasks:
     # Update and upgrade system packages
@@ -16,16 +16,12 @@
         upgrade: dist
         autoremove: yes
 
-    # Install necessary packages
-    - name: Install required packages
+    # Install required dependencies
+    - name: Install required dependencies
       apt:
         name:
           - curl
-          - ufw
           - nginx
-          - git
-          - software-properties-common
-          - fail2ban
         state: present
 
     # Install Node.js
@@ -39,34 +35,48 @@
         name: nodejs
         state: present
 
-    # Install pnpm
-    - name: Install pnpm globally
+    # Install pm2 globally
+    - name: Install pm2 process manager
       npm:
-        name: pnpm
+        name: pm2
         global: yes
 
-    # Create application directory
+    # Create a directory for the app (optional)
     - name: Create application directory
       file:
-        path: "{{ app_directory }}"
+        path: "/home/ubuntu/{{ app_name }}"
         state: directory
-        owner: www-data
-        group: www-data
+        owner: ubuntu
+        group: ubuntu
         mode: 0755
+
+    # Configure pm2 to manage the app
+    - name: Setup pm2 to manage the app
+      shell: |
+        pm2 start app.js --name "{{ app_name }}" --watch
+        pm2 save
+        pm2 startup systemd
+      args:
+        chdir: "/home/ubuntu/{{ app_name }}"
+      register: pm2_output
+
+    - name: Display pm2 setup output
+      debug:
+        var: pm2_output.stdout
 
     # Configure nginx
     - name: Configure nginx for reverse proxy
       template:
-        src: nginx.j2
-        dest: "{{ nginx_config_path }}"
+        src: templates/nginx.j2
+        dest: "/etc/nginx/sites-available/{{ app_name }}"
         owner: root
         group: root
         mode: 0644
 
     - name: Enable nginx site configuration
       file:
-        src: "{{ nginx_config_path }}"
-        dest: "/etc/nginx/sites-enabled/learning"
+        src: "/etc/nginx/sites-available/{{ app_name }}"
+        dest: "/etc/nginx/sites-enabled/{{ app_name }}"
         state: link
 
     - name: Remove default nginx site configuration
@@ -74,7 +84,7 @@
         path: /etc/nginx/sites-enabled/default
         state: absent
 
-    - name: Restart nginx
+    - name: Restart nginx to apply changes
       service:
         name: nginx
         state: restarted
@@ -90,52 +100,3 @@
       ufw:
         state: enabled
         policy: deny
-
-    # Disable SSH password and root login
-    - name: Disable SSH password and root login
-      lineinfile:
-        path: /etc/ssh/sshd_config
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-        state: present
-      with_items:
-        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
-        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
-
-    - name: Restart SSH service
-      service:
-        name: ssh
-        state: restarted
-
-    # Enable SELinux
-    - name: Check if SELinux is installed
-      command: sestatus
-      ignore_errors: yes
-      register: selinux_status
-
-    - name: Enable SELinux if not active
-      shell: setenforce 1
-      when: selinux_status.rc != 0
-
-    - name: Ensure SELinux is enforced on reboot
-      replace:
-        path: /etc/selinux/config
-        regexp: "^SELINUX="
-        replace: "SELINUX=enforcing"
-
-    # Configure Fail2Ban
-    - name: Configure Fail2Ban
-      copy:
-        dest: /etc/fail2ban/jail.local
-        content: |
-          [sshd]
-          enabled = true
-          port = ssh
-          logpath = %(sshd_log)s
-          maxretry = 5
-          bantime = 3600
-
-    - name: Restart Fail2Ban
-      service:
-        name: fail2ban
-        state: restarted
