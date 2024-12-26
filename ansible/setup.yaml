@@ -109,3 +109,28 @@
       ufw:
         state: enabled
         policy: deny
+
+    # Ensure SELinux is installed
+    - name: Ensure SELinux is installed
+      yum:
+        name: policycoreutils
+        state: present
+
+    # Enable SELinux
+    - name: Set SELinux to enforcing mode
+      command: setenforce 1
+      ignore_errors: true  # Ignore errors if SELinux is already set
+
+    - name: Ensure SELinux is enabled at boot
+      lineinfile:
+        path: /etc/selinux/config
+        regexp: '^SELINUX='
+        line: 'SELINUX=enforcing'
+
+    - name: Check current SELinux status
+      command: getenforce
+      register: selinux_status
+
+    - name: Display SELinux status
+      debug:
+        var: selinux_status.stdout
