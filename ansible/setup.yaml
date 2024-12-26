@@ -43,7 +43,7 @@
 
     # Install dependencies using pnpm
     - name: Install dependencies with pnpm
-      shell: pnpm install
+      shell: pnpm i
       args:
         chdir: "/home/ubuntu/{{ app_name }}"
 
