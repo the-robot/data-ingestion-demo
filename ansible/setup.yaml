@@ -29,10 +29,11 @@
         name: nodejs
         state: present
 
-    - name: Install NPM
-      apt:
-        name: npm
-        state: present
+    # Install pnpm globally
+    - name: Install pnpm
+      npm:
+        name: pnpm
+        global: yes
 
     # Install pm2 globally
     - name: Install pm2 process manager
@@ -40,25 +41,22 @@
         name: pm2
         global: yes
 
-    # Create a directory for the app (optional)
-    - name: Create application directory
-      file:
-        path: "/home/ubuntu/{{ app_name }}"
-        state: directory
-        owner: ubuntu
-        group: ubuntu
-        mode: 0755
+    # Install dependencies using pnpm
+    - name: Install dependencies with pnpm
+      shell: pnpm install
+      args:
+        chdir: "/home/ubuntu/{{ app_name }}"
 
     # Build the Next.js application
     - name: Build the Next.js app
-      shell: npm run build
+      shell: pnpm run build
       args:
         chdir: "/home/ubuntu/{{ app_name }}"
 
     # Configure PM2 to manage the Next.js app
     - name: Setup PM2 to manage the Next.js app
       shell: |
-        pm2 start npm --name "{{ app_name }}" -- start
+        pm2 start pnpm --name "{{ app_name }}" -- start
         pm2 save
         pm2 startup systemd
       args:
